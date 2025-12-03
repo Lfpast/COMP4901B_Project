@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import re
+import math
 from typing import Dict, Any, List, Union
 from bs4 import BeautifulSoup
 
@@ -16,12 +17,15 @@ def _get_api_key():
             if os.path.exists(env_path):
                 with open(env_path, 'r') as f:
                     for line in f:
-                        if line.strip().startswith('export Serper-API'):
+                        line = line.strip()
+                        # Support both "Serper-API=xxx" and "export Serper-API=xxx"
+                        if line.startswith('Serper-API=') or line.startswith('export Serper-API='):
                             parts = line.split('=', 1)
                             if len(parts) == 2:
                                 api_key = parts[1].strip()
                                 # Also set it in environ for future use
                                 os.environ["Serper-API"] = api_key
+                                break
         except Exception:
             pass
     return api_key
@@ -285,3 +289,334 @@ def get_shopping_tool_definition() -> Dict[str, Any]:
         }
     }
 
+
+def google_maps_search(query: str, location: str = None, num: int = 10) -> Dict[str, Any]:
+    """
+    Search for places using Google Maps via Serper API.
+    
+    Args:
+        query: The search query (e.g., "coffee shops", "restaurants").
+        location: The location to search around (e.g., "Central, Hong Kong").
+        num: Number of results to return (default 10).
+        
+    Returns:
+        Dict: The places search results with standardized format.
+    """
+    api_key = _get_api_key()
+    
+    if not api_key:
+        return {"error": "Serper-API key not found. Please set it in .env or environment variables."}
+
+    url = "https://google.serper.dev/places"
+    headers = {
+        'X-API-KEY': api_key,
+        'Content-Type': 'application/json'
+    }
+
+    # Combine query with location if provided
+    search_query = f"{query} in {location}" if location else query
+    
+    payload = json.dumps({
+        "q": search_query,
+        "gl": "hk",
+        "num": num
+    })
+
+    try:
+        response = requests.request("POST", url, headers=headers, data=payload)
+        response.raise_for_status()
+        raw_result = response.json()
+        
+        # Standardize the response format
+        places = []
+        if "places" in raw_result:
+            for place in raw_result["places"]:
+                standardized_place = {
+                    "title": place.get("title", ""),
+                    "address": place.get("address", ""),
+                    "rating": place.get("rating", 0),
+                    "reviews": place.get("ratingCount", 0),  # Serper uses ratingCount
+                    "price_level": place.get("priceLevel", ""),
+                    "category": place.get("category", ""),
+                    "phone": place.get("phoneNumber", ""),
+                    "website": place.get("website", ""),
+                    "latitude": place.get("latitude"),
+                    "longitude": place.get("longitude"),
+                    "cid": place.get("cid", ""),
+                    "position": place.get("position", 0),
+                    # Generate Google Maps link from cid for user convenience
+                    "google_maps_link": f"https://www.google.com/maps?cid={place.get('cid', '')}" if place.get("cid") else ""
+                }
+                places.append(standardized_place)
+        
+        return {
+            "query": search_query,
+            "places": places,
+            "total": len(places)
+        }
+        
+    except Exception as e:
+        return {"error": f"Maps search failed: {str(e)}"}
+
+
+def recommend_places(places: List[Dict], top_n: int = 5, price_preference: str = "any") -> Dict[str, Any]:
+    """
+    Recommend places based on a comprehensive scoring algorithm.
+    
+    The algorithm considers:
+    - Rating (40% weight): Higher rating = better
+    - Reviews count (30% weight): More reviews = more reliable
+    - Search position (30% weight): Higher position in Google results = more relevant
+    
+    Args:
+        places: List of place dictionaries from google_maps_search.
+        top_n: Number of top recommendations to return (default 5).
+        price_preference: Price filter - "budget" ($), "moderate" ($$), "expensive" ($$$), or "any".
+        
+    Returns:
+        Dict: Recommended places with scores and explanations.
+    """
+    if not places:
+        return {"error": "No places provided for recommendation."}
+    
+    # Price level mapping for filtering
+    price_map = {
+        "budget": ["$", "$1–50", "HK$1–50", "$1-50"],
+        "moderate": ["$$", "$50–100", "HK$50–100", "$50-100", "$50–150", "HK$50–150"],
+        "expensive": ["$$$", "$100+", "HK$100+", "$150+", "$$$$"]
+    }
+    
+    # Filter by price preference if specified
+    filtered_places = places
+    if price_preference != "any" and price_preference in price_map:
+        filtered_places = [
+            p for p in places 
+            if any(level in str(p.get("price_level", "")) for level in price_map[price_preference])
+        ]
+        # If no matches, use all places
+        if not filtered_places:
+            filtered_places = places
+    
+    # Calculate max reviews for normalization
+    max_reviews = max((p.get("reviews", 0) for p in filtered_places), default=1)
+    if max_reviews == 0:
+        max_reviews = 1
+    
+    # Calculate scores for each place
+    scored_places = []
+    for place in filtered_places:
+        rating = place.get("rating", 0) or 0
+        reviews = place.get("reviews", 0) or 0
+        position = place.get("position", 10) or 10
+        
+        # Scoring formula:
+        # - Rating score (0-40): rating / 5.0 * 40
+        # - Reviews score (0-30): log-normalized reviews * 30
+        # - Position score (0-30): inverse position * 30
+        
+        rating_score = (rating / 5.0) * 40
+        
+        # Log-normalize reviews (prevents one place with massive reviews from dominating)
+        reviews_score = (math.log10(reviews + 1) / math.log10(max_reviews + 1)) * 30
+        
+        # Position score (position 1 = 30 points, position 10 = 3 points)
+        position_score = (1 / position) * 30
+        
+        total_score = rating_score + reviews_score + position_score
+        
+        scored_places.append({
+            **place,
+            "recommendation_score": round(total_score, 2),
+            "score_breakdown": {
+                "rating_score": round(rating_score, 2),
+                "reviews_score": round(reviews_score, 2),
+                "position_score": round(position_score, 2)
+            }
+        })
+    
+    # Sort by score descending
+    scored_places.sort(key=lambda x: x["recommendation_score"], reverse=True)
+    
+    # Get top N recommendations
+    top_recommendations = scored_places[:top_n]
+    
+    return {
+        "recommendations": top_recommendations,
+        "total_analyzed": len(filtered_places),
+        "price_filter": price_preference,
+        "algorithm": "Weighted score: Rating(40%) + Reviews(30%) + Position(30%)"
+    }
+
+
+def get_maps_tool_definition() -> Dict[str, Any]:
+    """
+    Get the tool definition for the Google Maps search tool.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": "google_maps_search",
+            "description": "Search for places on Google Maps. Use this to find restaurants, cafes, attractions, stores, or any other places in a specific location.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The type of place to search for (e.g., 'coffee shops', 'Italian restaurants', 'tourist attractions')."
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "The location to search around (e.g., 'Central, Hong Kong', 'Tsim Sha Tsui')."
+                    },
+                    "num": {
+                        "type": "integer",
+                        "description": "Number of results to return (default 10).",
+                        "default": 10
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
+
+
+def get_recommend_places_tool_definition() -> Dict[str, Any]:
+    """
+    Get the tool definition for the place recommendation tool.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": "recommend_places",
+            "description": "Get smart recommendations from place search results. Uses a scoring algorithm based on rating, reviews, and search position to find the best places.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Number of top recommendations to return (default 5).",
+                        "default": 5
+                    },
+                    "price_preference": {
+                        "type": "string",
+                        "enum": ["any", "budget", "moderate", "expensive"],
+                        "description": "Price preference filter: 'budget' ($), 'moderate' ($$), 'expensive' ($$$), or 'any'.",
+                        "default": "any"
+                    }
+                },
+                "required": []
+            }
+        }
+    }
+
+
+def google_scholar(query: str, num: int = 10, year_low: int = None, year_high: int = None) -> Dict[str, Any]:
+    """
+    Search for academic papers using Google Scholar via Serper API.
+    
+    Args:
+        query: The search query string (e.g., "machine learning", "transformer neural network").
+        num: Number of results to return (default 10).
+        year_low: Filter papers published after this year (inclusive).
+        year_high: Filter papers published before this year (inclusive).
+        
+    Returns:
+        Dict: The scholar search results with papers information.
+    """
+    api_key = _get_api_key()
+    
+    if not api_key:
+        return {"error": "Serper-API key not found. Please set it in .env or environment variables."}
+
+    url = "https://google.serper.dev/scholar"
+    headers = {
+        'X-API-KEY': api_key,
+        'Content-Type': 'application/json'
+    }
+
+    payload_data = {
+        "q": query,
+        "num": num
+    }
+    
+    # Add year filters if provided
+    if year_low:
+        payload_data["as_ylo"] = year_low
+    if year_high:
+        payload_data["as_yhi"] = year_high
+
+    payload = json.dumps(payload_data)
+
+    try:
+        response = requests.request("POST", url, headers=headers, data=payload)
+        response.raise_for_status()
+        raw_result = response.json()
+        
+        # Standardize the response format
+        papers = []
+        if "organic" in raw_result:
+            for paper in raw_result["organic"]:
+                # Parse publication info to extract authors
+                pub_info = paper.get("publicationInfo", "")
+                authors = []
+                if pub_info and " - " in pub_info:
+                    # Format is typically: "Author1, Author2 - Journal, Year - Publisher"
+                    author_part = pub_info.split(" - ")[0]
+                    authors = [a.strip() for a in author_part.split(",") if a.strip()]
+                
+                standardized_paper = {
+                    "title": paper.get("title", ""),
+                    "link": paper.get("link", ""),
+                    "snippet": paper.get("snippet", ""),
+                    "publication_info": pub_info,
+                    "authors": authors,
+                    "year": paper.get("year", ""),
+                    "cited_by": paper.get("citedBy", 0),
+                    "pdf_link": paper.get("pdfUrl", "") or paper.get("htmlUrl", "")
+                }
+                papers.append(standardized_paper)
+        
+        return {
+            "query": query,
+            "papers": papers,
+            "total": len(papers)
+        }
+        
+    except Exception as e:
+        return {"error": f"Scholar search failed: {str(e)}"}
+
+
+def get_scholar_tool_definition() -> Dict[str, Any]:
+    """
+    Get the tool definition for the Google Scholar search tool.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": "google_scholar",
+            "description": "Search for academic papers, research articles, and citations on Google Scholar. Use this for literature review, finding research papers, or academic information.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The academic search query (e.g., 'deep learning image classification', 'transformer attention mechanism')."
+                    },
+                    "num": {
+                        "type": "integer",
+                        "description": "Number of results to return (default 10).",
+                        "default": 10
+                    },
+                    "year_low": {
+                        "type": "integer",
+                        "description": "Filter papers published after this year (e.g., 2020 for papers from 2020 onwards)."
+                    },
+                    "year_high": {
+                        "type": "integer",
+                        "description": "Filter papers published before this year (e.g., 2023 for papers up to 2023)."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }

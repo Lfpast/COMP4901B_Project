@@ -4,7 +4,13 @@ import time
 import logging
 from typing import Optional, List, Dict, Any
 from openai import OpenAI
-from .tools import google_search, get_search_tool_definition, browse_website, get_browsing_tool_definition, google_shopping, get_shopping_tool_definition
+from .tools import (
+    google_search, get_search_tool_definition,
+    browse_website, get_browsing_tool_definition,
+    google_shopping, get_shopping_tool_definition,
+    google_maps_search, get_maps_tool_definition, recommend_places,
+    google_scholar, get_scholar_tool_definition
+)
 
 # Setup logging
 # logging.basicConfig(level=logging.INFO)
@@ -40,7 +46,9 @@ class SearchAgent:
         max_steps: int = 10,
         use_tools: bool = True,
         use_browsing: bool = False,
-        use_shopping: bool = False
+        use_shopping: bool = False,
+        enable_maps: bool = False,
+        enable_scholar: bool = False
     ):
         if not api_key:
             api_key = _get_deepseek_api_key()
@@ -55,9 +63,16 @@ class SearchAgent:
         self.use_tools = use_tools
         self.use_browsing = use_browsing
         self.use_shopping = use_shopping
+        self.enable_maps = enable_maps
+        self.enable_scholar = enable_scholar
         self.search_tool_definition = get_search_tool_definition()
         self.browsing_tool_definition = get_browsing_tool_definition()
         self.shopping_tool_definition = get_shopping_tool_definition()
+        self.maps_tool_definition = get_maps_tool_definition()
+        self.scholar_tool_definition = get_scholar_tool_definition()
+        
+        # Store last maps search results for visualization
+        self._last_maps_results = []
         
         # Suppress httpx logging
         logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -91,6 +106,10 @@ class SearchAgent:
                         tools.append(self.shopping_tool_definition)
                     if self.use_browsing:
                         tools.append(self.browsing_tool_definition)
+                    if self.enable_maps:
+                        tools.append(self.maps_tool_definition)
+                    if self.enable_scholar:
+                        tools.append(self.scholar_tool_definition)
                     kwargs["tools"] = tools
                     kwargs["tool_choice"] = "auto"
                 
@@ -234,6 +253,93 @@ class SearchAgent:
                             "tool_call_id": tool_call.id,
                             "content": json.dumps(result)
                         })
+                    
+                    elif function_name == "google_maps_search":
+                        query = function_args.get("query")
+                        location = function_args.get("location")
+                        num = function_args.get("num", 10)
+                        
+                        logger.info(f"Maps search: {query} in {location} (num: {num})")
+                        
+                        # Execute maps search
+                        result = google_maps_search(query, location=location, num=num)
+                        
+                        # Store results for potential visualization
+                        if isinstance(result, dict) and "places" in result:
+                            self._last_maps_results = result["places"]
+                        
+                        # Extract places for trajectory
+                        places_info = []
+                        if isinstance(result, dict) and "places" in result:
+                            for place in result["places"]:
+                                places_info.append({
+                                    "title": place.get("title", ""),
+                                    "rating": place.get("rating", ""),
+                                    "reviews": place.get("reviews", ""),
+                                    "price_level": place.get("price_level", ""),
+                                    "category": place.get("category", ""),
+                                    "google_maps_link": place.get("google_maps_link", "")
+                                })
+                        
+                        # Log tool call
+                        tool_calls_log.append({
+                            "step": step + 1,
+                            "tool": "google_maps_search",
+                            "query": query,
+                            "location": location,
+                            "num": num,
+                            "result": str(result)[:200] + "...",
+                            "places": places_info
+                        })
+                        
+                        # Add result to messages
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": json.dumps(result)
+                        })
+                    
+                    elif function_name == "google_scholar":
+                        query = function_args.get("query")
+                        num = function_args.get("num", 10)
+                        year_low = function_args.get("year_low")
+                        year_high = function_args.get("year_high")
+                        
+                        logger.info(f"Scholar search: {query} (num: {num}, years: {year_low}-{year_high})")
+                        
+                        # Execute scholar search
+                        result = google_scholar(query, num=num, year_low=year_low, year_high=year_high)
+                        
+                        # Extract papers for trajectory
+                        papers_info = []
+                        if isinstance(result, dict) and "papers" in result:
+                            for paper in result["papers"]:
+                                papers_info.append({
+                                    "title": paper.get("title", ""),
+                                    "authors": paper.get("authors", []),
+                                    "year": paper.get("year", ""),
+                                    "cited_by": paper.get("cited_by", 0),
+                                    "link": paper.get("link", "")
+                                })
+                        
+                        # Log tool call
+                        tool_calls_log.append({
+                            "step": step + 1,
+                            "tool": "google_scholar",
+                            "query": query,
+                            "num": num,
+                            "year_low": year_low,
+                            "year_high": year_high,
+                            "result": str(result)[:200] + "...",
+                            "papers": papers_info
+                        })
+                        
+                        # Add result to messages
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": json.dumps(result)
+                        })
             else:
                 # No tool calls, assume final answer
                 final_answer = content
@@ -286,6 +392,10 @@ A: The capital and largest city of France is Paris, which is also the country's 
             tools_list.append("Google Shopping")
         if self.use_browsing:
             tools_list.append("Website Browser")
+        if self.enable_maps:
+            tools_list.append("Google Maps")
+        if self.enable_scholar:
+            tools_list.append("Google Scholar")
             
         tools_str = ", ".join(tools_list)
         
@@ -307,9 +417,35 @@ TOOL USAGE STRATEGY:
    - It does NOT support date filtering.
 """
 
-        if self.use_browsing:
-            # Determine numbering based on whether shopping is enabled
+        if self.enable_maps:
             step_num = 3 if self.use_shopping else 2
+            prompt += f"""{step_num}. **Google Maps**: Use this to find places, restaurants, cafes, attractions, or any location-based queries.
+   - Use it when the user asks for "find restaurants near X", "coffee shops in Y", "tourist attractions in Z".
+   - Provide both the 'query' (what to search for) and 'location' (where to search).
+   - Returns place details including name, address, rating, reviews, and coordinates.
+"""
+
+        if self.enable_scholar:
+            step_num = 2
+            if self.use_shopping:
+                step_num += 1
+            if self.enable_maps:
+                step_num += 1
+            prompt += f"""{step_num}. **Google Scholar**: Use this to search for academic papers, research articles, and citations.
+   - Use it for literature review, finding research papers, or academic information.
+   - Supports year filtering with 'year_low' and 'year_high' parameters.
+   - Returns paper titles, authors, publication info, citation counts, and PDF links.
+"""
+
+        if self.use_browsing:
+            # Determine numbering based on enabled tools
+            step_num = 2
+            if self.use_shopping:
+                step_num += 1
+            if self.enable_maps:
+                step_num += 1
+            if self.enable_scholar:
+                step_num += 1
             prompt += f"""{step_num}. **Browse Website**: Use this ONLY when:
    - The search snippet is cut off or insufficient.
    - You need to verify a specific detail found in a search result.
