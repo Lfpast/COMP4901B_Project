@@ -9,15 +9,18 @@ The repository is organized as follows:
 ```text
 COMP4901B_Project/
 ├── src/
-│   ├── agent.py .................... Core Agent logic (ReAct loop, prompt engineering)
-│   ├── tools.py .................... Implementation of all 5 tools (Search, Maps, Shopping, etc.)
+│   ├── agent.py .................... Core agent logic (ReAct loop, tool wiring, logging)
+│   ├── tools.py .................... Implementation of all external tools
 │   └── metrics.py .................. Evaluation metrics for agent performance
 ├── tests/
-│   ├── test_maps.py ................ Unit tests for Google Maps & Visualization
+│   ├── test_maps.py ................ Unit tests for Google Maps search & visualization
 │   ├── test_scholar.py ............. Unit tests for Google Scholar search
 │   ├── test_shopping.py ............ Unit tests for Google Shopping (HK localized)
-│   ├── test_browsing.py ............ Unit tests for Website Browsing & Content Extraction
-│   └── README.md ................... Specific documentation for the test suite
+│   ├── test_browsing.py ............ Unit tests for website browsing & content extraction
+│   ├── task_conference_preparation.py ... Runs Task 1 (AI conference attendance preparation)
+│   ├── task_course_project.py ........... Runs Task 2 (few-shot learning course project setup)
+│   ├── task_thesis_defense.py ........... Runs Task 3 (thesis defense preparation)
+│   └── README.md ................... Documentation for the test and task scripts
 ├── shell/
 │   ├── run_tests.sh ................ ⚡ Script to run all unit tests
 │   ├── run_experiment.sh ........... 🧪 Script for full training/evaluation pipeline
@@ -27,11 +30,11 @@ COMP4901B_Project/
 │   ├── grade_with_em.py ............ Exact Match (EM) grading logic
 │   └── grade_with_llm_judge.py ..... LLM-based evaluation logic
 ├── docs/
-│   ├── TOOL_USER_GUIDE.md .......... 📘 COMPLETE GUIDE for using all agent tools
+│   ├── TOOL_USER_GUIDE.md .......... 📘 Complete guide for using all agent tools
 │   └── part2_realistic_tasks.md .... 🌍 Real-world task demonstrations & trajectories
 ├── data/
 │   └── nq_test_100.jsonl ........... Natural Questions dataset for evaluation
-├── results/ ........................ Directory for storing evaluation outputs
+├── results/ ........................ Directory for storing evaluation outputs & task logs
 ├── requirements.txt ................ Python dependencies
 └── README.md ....................... This file
 ```
@@ -110,9 +113,12 @@ We provide comprehensive documentation to help you understand the agent's capabi
 
 ### 2. Realistic Tasks & Trajectories
 👉 **[docs/part2_realistic_tasks.md](docs/part2_realistic_tasks.md)**
-*   Demonstrates **3 complex real-world scenarios** (Café Search, Headphone Shopping, Literature Review).
+*   Demonstrates **3 complex real-world scenarios**:
+    *   AI conference preparation (papers + hotels + shopping).
+    *   Few-shot learning course project preparation (literature + study locations + equipment).
+    *   Thesis defense preparation (supporting papers + printing services + formal supplies).
 *   Compares manual workflows vs. automated agent trajectories.
-*   Analyzes the agent's reasoning steps and tool usage patterns.
+*   Analyzes the agent's reasoning steps, tool usage patterns, and failure modes.
 
 ## ©License
 This project is for academic use only.
