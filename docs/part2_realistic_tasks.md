@@ -8,302 +8,378 @@ For each task, I:
 - **Discuss whether the agent completed the task correctly**, and analyze what went wrong if not
 
 All trajectories are based on the actual capabilities exposed in `tools.py`:  
-`google_search`, `browse_website`, `google_shopping`, `google_maps_search`, `recommend_places`, and `google_scholar`.
+**Valid tools (excluding search and browsing):** `google_shopping`, `google_maps_search`, `google_scholar`  
+**Auxiliary tools:** `google_search`, `browse_website` (used to support main tools but don't count toward the 3-tool requirement)
 
 ---
 
-## Task 1 – Finding a Quiet Café in Central for Studying with Friends
+## Task 1 – Preparing for an AI Conference Attendance
 
 ### 1.1 Real-World Manual Workflow
 
-In reality, if I want to find a quiet café in Central (Hong Kong) that is suitable for studying with friends, I would:
+When I need to attend an academic conference (e.g., NeurIPS or CVPR) in Hong Kong, I would typically:
 
-- Open Google Maps and search for coffee shops near *Central, Hong Kong*.
-- Filter by rating and number of reviews to identify promising candidates.
-- Click into each place, open the website or social pages (if available) to check photos, menu, whether there is Wi‑Fi, power outlets, and whether there is a time limit.
-- Sometimes, I also Google blog reviews like “`<café name> quiet study`” to confirm the environment and see if people mention it is suitable for studying.
-- Finally, I choose one place and share the location link with my friends.
+- Search Google Scholar for recent papers related to the conference topics to understand current research trends.
+- Read abstracts and introductions of highly-cited papers to prepare questions for sessions.
+- Use Google Maps to find hotels or Airbnbs near the conference venue, filtering by rating and price.
+- Check accommodation websites for amenities (WiFi, workspace, distance to venue).
+- Shop for conference essentials: professional voice recorder for sessions, portable charger, business card holder, and a quality notebook.
+- Compare prices across different e-commerce platforms and check seller ratings.
 
 ### 1.2 Agent Configuration and Tools Used
 
 To automate this with my agent, I configure:
 
-- `SearchAgent(use_tools=True, use_browsing=True, enable_maps=True)`
+- `SearchAgent(use_tools=True, use_browsing=True, use_shopping=True, enable_maps=True, enable_scholar=True)`
 
 The main tools used in this trajectory:
 
-- `google_maps_search` – to find candidate cafés and get ratings/review counts.
-- `browse_website` – to open café websites or map pages for details (Wi‑Fi, time limits, etc.).
-- `google_search` – to search for external reviews or blog posts mentioning the study environment.
+- `google_scholar` – to discover relevant papers and understand conference themes.
+- `google_maps_search` – to find suitable accommodation near the venue.
+- `google_shopping` – to purchase conference equipment and supplies.
+- `google_search` & `browse_website` – auxiliary tools for additional research.
 
 ### 1.3 Agent Trajectory (≥ 5 Steps, ≥ 3 Tools)
 
-- **Step 1 – Initial Reasoning (no tool)**  
-  The user asks: *“Find a quiet café in Central, Hong Kong for studying with friends, preferably with Wi‑Fi and a calm environment.”*  
-  The agent’s internal reasoning (recorded in `reasoning_steps`) identifies:
-  - Location constraint: *Central, Hong Kong*
-  - Place type: *coffee shop / café*
-  - Preferences: *quiet, Wi‑Fi, comfortable for longer stays*  
-  The agent decides to start with **Google Maps** to get a list of candidate places.
+**Step 1 – Initial Reasoning (no tool)**  
+The user asks: *"I'm attending an AI conference on multimodal learning in Kowloon next month. Help me: (1) find 3-5 important recent papers to read beforehand, (2) recommend a hotel within 15 minutes walk from the venue, and (3) suggest equipment I should buy, budget around HK$1000."*
 
-- **Step 2 – Maps Search (`google_maps_search`)**  
+The agent's internal reasoning identifies:
+- Conference topic: *multimodal learning, AI*
+- Location constraint: *Kowloon, Hong Kong*
+- Tasks: *literature preparation + accommodation + shopping for equipment*
+
+The agent decides to start with **Google Scholar** to understand the field.
+
+**Step 2 – Scholar Search (`google_scholar`)**  
   The agent issues a tool call:
+- Function: `google_scholar`
+- Arguments:
+  - `query = "multimodal learning vision language"`
+  - `num = 15`
+  - `year_low = 2022`
+
+The tool returns a `papers` list containing:
+- `title`, `authors`, `year`, `cited_by`, `pdf_link`, `snippet`
+
+From the results, the agent identifies 5 highly-cited papers (e.g., CLIP variants, BLIP, Flamingo) with citation counts > 200 and published after 2022. These are recorded in `reasoning_steps`.
+
+**Step 3 – Abstract Reading (`browse_website`)**  
+For the top 3 papers, the agent:
+- Extracts the `pdf_link` or arXiv link from the Scholar results.
+- Calls `browse_website` with those URLs to read abstracts and introduction sections.
+- Summarizes the key contributions: *"BLIP-2 introduces Q-Former for efficient vision-language alignment..."*
+
+**Step 4 – Accommodation Search (`google_maps_search`)**  
+The agent calls:
   - Function: `google_maps_search`
-  - Arguments (conceptual):  
-    - `query = "coffee shop with wifi"`  
-    - `location = "Central, Hong Kong"`  
-    - `num = 10`  
-  The tool returns a standardized `places` list containing information such as:
-  - `title`, `address`, `rating`, `reviews`, `price_level`, `category`, `google_maps_link`, etc.  
-  In the next assistant message, the agent summarizes that it has several candidates, e.g., cafés with rating > 4.3 and > 200 reviews.
+- Arguments:
+  - `query = "hotel"`
+  - `location = "Kowloon, Hong Kong"`
+  - `num = 15`
 
-- **Step 3 – Website Browsing (`browse_website`)**  
-  For one of the promising cafés (let’s call it *Cafe A*), the agent:
-  - Extracts the café’s `website` URL or the `google_maps_link` from the previous step.
-  - Calls `browse_website` with that URL.  
-  From the returned text, the agent scans for cues such as:
-  - “free Wi‑Fi”, “no time limit”, “study”, “work friendly”, “power outlets”
-  - Any notes about noise level or typical customers  
-  These findings are recorded in the next reasoning step.
+Returns a list of hotels with `rating`, `reviews`, `price_level`, `address`, and `google_maps_link`. The agent filters for:
+- Rating > 4.0
+- Reviews > 100 (reliability indicator)
+- Located within reasonable distance to common conference venues
 
-- **Step 4 – External Review Search (`google_search`)**  
-  To verify the environment, the agent issues:
-  - Function: `google_search`
+**Step 5 – Hotel Website Verification (`browse_website`)**  
+For 2-3 promising hotels, the agent:
+- Calls `browse_website` on their `website` URLs.
+- Checks for amenities: *"free WiFi", "workspace", "breakfast included", "conference room nearby"*
+- Verifies distance to common conference centers via the Maps link.
+
+**Step 6 – Shopping for Conference Equipment (`google_shopping`)**  
+The agent calls:
+- Function: `google_shopping`
   - Arguments:  
-    - `query = "<Cafe A name> quiet study review"`  
-    - `page = 1`  
-    - `tbs = "anytime"`  
-  It inspects the `organic` results, especially snippets mentioning *“quiet”, “noise”, “good for studying”, “laptop friendly”*, and records representative snippets in `tool_calls`.
+  - Multiple queries in sequence:
+    - `query = "voice recorder conference Hong Kong"`
+    - `query = "portable charger 20000mAh Hong Kong"`
+    - `query = "business card holder professional"`
+  - `num = 10` for each
 
-- **Step 5 – Comparing with Another Candidate (`browse_website` + Maps info)**  
-  The agent repeats a similar `browse_website` call for another high-rated café (*Cafe B*), and uses the Maps ratings/reviews plus website text to compare:
-  - Is there Wi‑Fi?
-  - Are there power outlets?
-  - Are there mentions of crowding or time limits?
+Returns shopping results with `title`, `price`, `source`, `rating`. The agent filters for:
+- Total budget ≤ HK$1000
+- Good seller ratings
+- Suitable specifications (e.g., recorder with >8 hours battery)
 
-- **Step 6 – Final Recommendation (no further tools)**  
-  Based on the gathered information, the agent:
-  - Chooses the café that offers Wi‑Fi, good ratings (e.g., > 4.3), sufficient reviews, and textual indications that it is suitable for studying.
-  - Produces a final answer summarizing:
-    - The recommended café name and address.
-    - Rough walking directions / station (“near Central MTR Station”).
-    - Why it thinks it is study-friendly (Wi‑Fi, reviews mentioning quiet environment, etc.).
-  This appears as `final_answer` in the trajectory output.
+**Step 7 – Price Comparison (`google_search`)**  
+For specific products identified in shopping, the agent:
+- Issues `google_search` queries like: *"Sony ICD-PX470 review Hong Kong best price"*
+- Checks snippets for user reviews and potential better deals.
+
+**Step 8 – Final Recommendation (no further tools)**  
+The agent produces a final answer:
+- **Papers**: Lists 5 papers with 2-3 sentence summaries and suggested reading order (foundational → recent).
+- **Hotel**: Recommends 1-2 hotels with addresses, ratings, and booking links.
+- **Equipment**: Lists specific products with prices, purchase links, and total cost breakdown.
 
 ### 1.4 Correctness and Failure Analysis
 
-- **Overall outcome**  
-  The agent is generally able to complete this task correctly:
-  - It uses `google_maps_search` to identify good candidates.
-  - `browse_website` extracts website text mentioning Wi‑Fi and other conditions.
-  - `google_search` provides external opinions about quietness and study friendliness.
+**Overall outcome:**  
+The agent successfully completes this multi-faceted task:
+- `google_scholar` ensures academically relevant paper recommendations.
+- `google_maps_search` provides reliable accommodation options with ratings.
+- `google_shopping` delivers budget-appropriate equipment suggestions.
 
-- **Potential failure modes**  
-  - Some cafés may not have an accessible website or the HTML structure may be complex, causing `browse_website` to miss important information such as Wi‑Fi or time limits.
-  - `price_level` or `category` fields can be missing in Maps data, making it harder to judge “study-friendly” purely from structured fields.
-  - The agent’s interpretation of “quiet” is based on sparse text; if reviews are mixed, it might still pick a place that feels noisy in real life.
+**Potential failure modes:**
+- Some arXiv PDFs may have complex LaTeX rendering that `browse_website` cannot parse cleanly, potentially missing key details in abstracts.
+- Hotel pricing in Maps data may be outdated or unavailable; the agent must then rely on website browsing which may fail for JavaScript-heavy booking sites.
+- Shopping results can be time-sensitive; prices fluctuate and stock availability is not guaranteed.
+- The agent might over-prioritize citation count for papers, potentially missing very recent (but impactful) work with few citations yet.
 
-Even with these limitations, the agent significantly reduces the manual effort compared to browsing Maps and multiple web pages by hand.
+Despite these limitations, the agent dramatically reduces manual effort compared to separately searching Scholar, Maps, and shopping platforms by hand.
 
 ---
 
-## Task 2 – Choosing a Value-for-Money Noise-Cancelling Headphone for Classes and Commuting
+## Task 2 – Course Project Preparation: Few-Shot Learning Research
 
 ### 2.1 Real-World Manual Workflow
 
-In real life, when I want to buy noise-cancelling headphones for classes and commuting (with a budget, say 1500–2500 HKD), I would:
+When starting a machine learning course project on few-shot learning, I would:
 
-- Use Google to search “best noise cancelling headphones for students / commuting”.
-- Read articles and blog posts listing top models, pros/cons, and usage scenarios.
-- Visit shopping sites (local e-commerce, official stores, etc.) to check prices and availability.
-- Compare a few candidates in terms of price, noise-cancelling performance, comfort, and battery life.
-- Finally, pick one model and a store with a reasonable price and acceptable seller reputation.
+- Search Google Scholar for foundational and recent papers on few-shot learning.
+- Read paper abstracts to identify key methods (meta-learning, prototypical networks, etc.).
+- Find a quiet study location with good WiFi—using Google Maps to search for libraries, study cafes, or co-working spaces.
+- Visit cafe websites or Maps reviews to check: noise level, power outlets, seating comfort, time limits.
+- Purchase study materials and equipment: ML textbooks, external hard drive for datasets, second monitor for coding.
+- Compare prices and read reviews on e-commerce sites.
 
 ### 2.2 Agent Configuration and Tools Used
 
 To automate this with my agent, I configure:
 
-- `SearchAgent(use_tools=True, use_browsing=True, use_shopping=True)`
+- `SearchAgent(use_tools=True, use_browsing=True, use_shopping=True, enable_maps=True, enable_scholar=True)`
 
 The main tools used:
 
-- `google_search` – to discover popular models and read summaries/comparisons.
-- `google_shopping` – to check prices and sellers for specific models.
-- `browse_website` – to open specific product pages and read details like warranty, shipping, and authenticity.
+- `google_scholar` – to find relevant papers on few-shot learning.
+- `google_maps_search` – to find suitable study locations (libraries, cafes).
+- `google_shopping` – to purchase study materials and hardware.
+- `google_search` & `browse_website` – auxiliary tools for additional information.
 
 ### 2.3 Agent Trajectory (≥ 5 Steps, ≥ 3 Tools)
 
-- **Step 1 – Initial Reasoning (no tool)**  
-  The user asks:  
-  *“With a budget of 1500–2500 HKD, recommend a pair of noise-cancelling headphones suitable for attending classes and commuting, and give me the best value purchase link.”*  
-  The agent reasons that it first needs to:
-  - Identify good candidate models that fit “noise cancelling + commuting + students”.
-  - Then compare actual prices and sellers using shopping results.
+**Step 1 – Initial Reasoning (no tool)**  
+The user asks: *"I'm starting a course project on few-shot learning. Please: (1) recommend 5 important papers to read, (2) find 2-3 quiet study places in Tsim Sha Tsui with WiFi, and (3) suggest study equipment to buy with a budget of HK$3000."*
 
-- **Step 2 – Discover Candidate Models (`google_search`)**  
+The agent identifies:
+- Research topic: *few-shot learning*
+- Location: *Tsim Sha Tsui, Hong Kong*
+- Budget: *HK$3000 for equipment*
+
+**Step 2 – Literature Search (`google_scholar`)**  
+The agent calls:
+- Function: `google_scholar`
+- Arguments:
+  - `query = "few-shot learning meta-learning"`
+  - `num = 20`
+  - `year_low = 2019`
+
+Returns papers including classic works (Matching Networks, Prototypical Networks) and recent advances. The agent selects 5 papers balancing:
+- Foundational methods (high citations)
+- Recent innovations (2022-2024)
+- Diverse approaches (meta-learning, metric learning, data augmentation)
+
+**Step 3 – Paper Abstract Extraction (`browse_website`)**  
+For each of the 5 selected papers:
+- Calls `browse_website` on `pdf_link` (usually arXiv).
+- Extracts abstract and first paragraphs of introduction.
+- Summarizes: *"Prototypical Networks learn a metric space where classification is performed by computing distances to prototype representations..."*
+
+**Step 4 – Study Location Search (`google_maps_search`)**  
   The agent calls:
-  - `google_search` with arguments like:  
-    - `query = "best noise cancelling headphones for students and commuting 2024"`  
-    - `page = 1`  
-    - `tbs = "past_year"`  
-  From the `organic` results, it extracts:
-  - Frequently mentioned models (e.g., Sony WH‑1000XM series, Bose QuietComfort series, AirPods Pro, etc.).
-  - Any quick comments like *“best for commuters”*, *“comfortable while studying”*.
+- Function: `google_maps_search`
+- Arguments:
+  - `query = "library study cafe quiet"`
+  - `location = "Tsim Sha Tsui, Hong Kong"`
+  - `num = 15`
 
-- **Step 3 – Price and Availability Check (`google_shopping`)**  
-  For two or three promising models, the agent issues separate shopping tool calls, for example:
-  - `{"query": "Sony WH-1000XM5 Hong Kong price", "num": 10, "page": 1}`  
-  - `{"query": "Bose QuietComfort noise cancelling headphones Hong Kong", "num": 10, "page": 1}`  
-  From each `shopping` result, it extracts:
-  - `title`, `price`, `source` (seller), `rating`, and `link`.  
-  It then compares which options fall into the 1500–2500 HKD budget and have good seller reputation (if available).
+Returns places with `rating`, `reviews`, `category`, and `address`. The agent looks for:
+- Libraries (public or university, if accessible)
+- Cafes with high ratings (>4.2) and keywords like "quiet", "study-friendly" in reviews
+- Co-working spaces
 
-- **Step 4 – Detailed Product Information (`browse_website`)**  
-  For the most promising few shopping results, the agent:
-  - Calls `browse_website` on the product page URLs.  
-  Using the returned content, it checks:
-  - Whether the item is likely a Hong Kong official product (warranty information, authorized dealer notes, etc.).
-  - Shipping details and return policy.
-  - Any mentions of student discounts or bundles.  
-  These details are summarized into `reasoning_steps` to justify the final recommendation.
+**Step 5 – Location Details (`browse_website` + `google_search`)**  
+For promising study spots:
+- Calls `browse_website` on their websites to check: *"free WiFi", "power outlets", "no time limit", "quiet environment"*
+- Issues `google_search` queries like: *"<cafe name> Tsim Sha Tsui study friendly review"* to read user experiences about noise level and laptop usage policies.
 
-- **Step 5 – Additional Review Comparison (`google_search`)**  
-  If two models seem close in price and availability, the agent runs another:
-  - `google_search` with a comparative query, such as:  
-    - `query = "Sony WH-1000XM5 vs Bose QuietComfort noise cancelling commuting review"`  
-  It reads the snippets to compare:
-  - Noise-cancelling performance.
-  - Comfort during long wear (classes, commuting).
-  - Battery life and portability.
+**Step 6 – Equipment Shopping (`google_shopping`)**  
+The agent makes multiple shopping calls:
+- `query = "machine learning textbook hands-on Hong Kong"` → finds books like "Hands-On Machine Learning" (~HK$400)
+- `query = "external hard drive 2TB Hong Kong"` → finds drives (~HK$600-800)
+- `query = "portable monitor 15.6 inch Hong Kong"` → finds monitors (~HK$1200-1600)
+- `query = "USB-C hub multiport"` → finds hubs (~HK$200-300)
 
-- **Step 6 – Final Recommendation and Link (no further tools)**  
-  Based on all information collected, the agent:
-  - Selects a single model that best balances price, noise cancellation, comfort, and availability.
-  - Chooses one or two shopping links within the budget that appear trustworthy.
-  - Produces a final answer explaining:
-    - Why this model is recommended (e.g., strong noise cancellation for commuting, comfortable for long lectures, good battery life).
-    - Why the suggested store offers good value (price within range, adequate seller rating, warranty).
+The agent calculates total cost to stay within HK$3000 budget, prioritizing essential items.
+
+**Step 7 – Product Review Check (`google_search`)**  
+For high-value items (monitor, hard drive):
+- Searches: *"<product model> review Hong Kong reliability"*
+- Checks snippets for common issues: *"screen quality", "data transfer speed", "build quality"*
+
+**Step 8 – Final Comprehensive Plan (no further tools)**  
+The agent outputs:
+- **Literature**: 5 papers with summaries and suggested reading order (foundational concepts → advanced techniques).
+- **Study Locations**: 2-3 places with addresses, ratings, amenities (WiFi, outlets, noise level), and Maps links.
+- **Equipment**: Itemized list with products, prices, purchase links, and total cost.
 
 ### 2.4 Correctness and Failure Analysis
 
-- **Overall outcome**  
-  The agent can typically recommend a **reasonable** and **justified** headphone choice:
-  - It grounds its decision on mainstream recommendations from `google_search`.
-  - It uses `google_shopping` to ensure the choice is budget-appropriate and available in Hong Kong.
-  - It uses `browse_website` to double-check key details that matter in real decisions (warranty, seller, etc.).
+**Overall outcome:**  
+The agent successfully provides a holistic project preparation plan:
+- `google_scholar` ensures relevant and high-quality literature.
+- `google_maps_search` identifies practical study locations with real user ratings.
+- `google_shopping` delivers budget-conscious equipment recommendations.
 
-- **Limitations and possible errors**  
-  - Prices are time-sensitive and can fluctuate; `google_shopping` gives a snapshot but not a guarantee of “absolute cheapest price”.
-  - Some e-commerce sites rely heavily on JavaScript; `browse_website` may not capture all structured data, causing the agent to miss, for example, warranty or region information.
-  - The agent might slightly mis-rank models if it over-weights price or a single review snippet; human preferences (comfort, brand preference) play a big role.
+**Limitations and possible errors:**
+- Some cafe websites are image-heavy or JavaScript-based; `browse_website` may miss detailed amenity information, forcing reliance on potentially incomplete Maps data.
+- "Quiet" is subjective; even with reviews mentioning it, actual noise levels vary by time of day. The agent cannot guarantee a consistently quiet environment.
+- Equipment prices fluctuate; the recommended budget breakdown is a snapshot and may not reflect current promotions or stock-outs.
+- Very recent papers (e.g., published in the last 3 months) may not yet have enough citations to be surfaced by Scholar's default ranking, potentially causing the agent to miss cutting-edge work.
 
-Even with these caveats, the agent substantially automates comparison and information gathering compared to manually browsing multiple review blogs and shopping platforms.
+Nevertheless, the agent substantially automates the multi-step process of literature review, location scouting, and equipment procurement, saving hours of manual searching.
 
 ---
 
-## Task 3 – Initial Literature Screening for a Few-Shot Multimodal Learning Project
+## Task 3 – Preparing for Thesis Defense Presentation
 
 ### 3.1 Real-World Manual Workflow
 
-When planning a course project on **few-shot multimodal learning**, my typical manual workflow is:
+When I need to prepare for my undergraduate thesis defense, I would:
 
-- Go to Google Scholar and search for “few-shot multimodal learning”.
-- Filter results by publication year (e.g., 2020 and later).
-- Look at titles, venues, and citation counts to find influential or representative papers.
-- Open the PDF or HTML versions to read abstracts and introductions.
-- Choose a small set of papers (e.g., 5) to read in a reasonable order, from foundational to more specialized or recent work.
+- Use Google Scholar to find recent papers that support my arguments or provide alternative perspectives on my research topic.
+- Read abstracts and key findings to incorporate them into my defense slides and responses to potential questions.
+- Use Google Maps to find professional printing and binding services near campus for my thesis copies and poster printing.
+- Check reviews for print quality, turnaround time, and pricing.
+- Shop for defense essentials: formal attire (suit or dress), presentation clicker/laser pointer, professional folders for thesis copies, USB backup drives.
+- Compare prices and read reviews on e-commerce platforms to ensure quality within budget.
 
 ### 3.2 Agent Configuration and Tools Used
 
 To automate this with my agent, I configure:
 
-- `SearchAgent(use_tools=True, use_browsing=True, enable_scholar=True)`
+- `SearchAgent(use_tools=True, use_browsing=True, use_shopping=True, enable_maps=True, enable_scholar=True)`
 
 The main tools used:
 
-- `google_scholar` – to search for academic papers and filter by year.
-- `google_search` – to find summaries, blog posts, or secondary explanations of key papers.
-- `browse_website` – to open PDF/HTML versions from arXiv or other repositories and extract abstracts and introductions.
+- `google_scholar` – to find supporting research papers for the defense.
+- `google_maps_search` – to find printing and binding services near campus.
+- `google_shopping` – to purchase defense essentials (attire, presentation tools, supplies).
+- `google_search` & `browse_website` – auxiliary tools for print shop details and product specifications.
 
 ### 3.3 Agent Trajectory (≥ 5 Steps, ≥ 3 Tools)
 
-- **Step 1 – Initial Reasoning (no tool)**  
-  The user asks:  
-  *“I want to do a project about few-shot multimodal learning. Please find 5 important papers published after 2020, give a 2–3 sentence summary for each, and suggest a reading order.”*  
-  The agent reasons that it needs to:
-  - Use Google Scholar to obtain relevant papers with year filters.
-  - Use PDFs/HTML pages to read abstracts and skim introductions.
-  - Optionally use general search to get secondary summaries.
+**Step 1 – Initial Reasoning (no tool)**  
+The user asks: *"I'm defending my undergraduate thesis on 'Graph Neural Networks for Molecular Property Prediction' next week. Please: (1) find 3-5 recent papers on GNN applications in chemistry to strengthen my literature review, (2) find 2-3 printing shops near HKUST for thesis binding and poster printing, and (3) suggest what I should buy for the defense with a budget of HK$2500."*
 
-- **Step 2 – Scholar Search (`google_scholar`)**  
+The agent identifies:
+- Research topic: *Graph Neural Networks, molecular property prediction*
+- Location: *Near HKUST (Hong Kong University of Science and Technology)*
+- Budget: *HK$2500 for defense preparation*
+- Tasks: *literature strengthening + printing services + shopping for essentials*
+
+**Step 2 – Literature Search (`google_scholar`)**  
   The agent calls:
-  - `google_scholar` with arguments like:  
-    - `query = "few-shot multimodal learning"`  
+- Function: `google_scholar`
+- Arguments:
+  - `query = "graph neural networks molecular property prediction"`
     - `num = 20`  
-    - `year_low = 2020`  
-  From the returned `papers` list, it collects:
-  - `title`, `authors`, `year`, `cited_by`, and `pdf_link` / `htmlUrl`.  
-  The agent then selects candidate papers that are both recent (≥ 2020) and sufficiently cited.
+  - `year_low = 2022`
 
-- **Step 3 – Supplementary Background (`google_search`)**  
-  For one or two high-impact papers, the agent calls:
-  - `google_search` with queries like:  
-    - `"<paper title> summary"` or `"<paper title> blog"`.  
-  It reads snippets or blog summaries that explain the contribution and context in more accessible language than the original paper.
+Returns papers with `title`, `authors`, `year`, `cited_by`, `pdf_link`. The agent filters for:
+- Recent publications (2022-2024)
+- High citation count (>50 for recent papers, >100 for older ones)
+- Relevant to GNN applications in chemistry/drug discovery
+- Papers from top venues (Nature, Science, NeurIPS, ICML, etc.)
 
-- **Step 4 – Reading Abstracts and Introductions (`browse_website`)**  
-  For each of the top candidate papers (say, 5–8 papers before narrowing down to 5), the agent:
-  - Calls `browse_website` with the `pdf_link` or HTML link (often arXiv or publisher pages).  
-  From the resulting content, it attempts to:
-  - Extract the title and abstract.
-  - Skim the first part of the introduction to understand:
-    - What problem is being addressed.
-    - What methods are used (e.g., meta-learning, contrastive pretraining).
-    - What modalities are involved (e.g., image-text, audio-visual).
+**Step 3 – Paper Abstract Reading (`browse_website`)**  
+For the top 5 selected papers:
+- Calls `browse_website` on `pdf_link` (typically arXiv or publisher sites).
+- Extracts abstracts and key contributions.
+- Summarizes findings: *"This paper introduces a novel message-passing framework for predicting quantum mechanical properties...", "Proposes an attention-based GNN architecture that achieves state-of-the-art on MoleculeNet benchmarks..."*
+- Notes which papers could strengthen specific sections of the defense (methodology, related work, future directions).
 
-- **Step 5 – Possible Second Scholar Query (`google_scholar`)**  
-  If the initial query mostly returns, for example, image-text papers, but the agent wants broader coverage (e.g., other modalities or related foundational works), it may:
-  - Issue a second Scholar query:  
-    - `query = "few-shot vision-language model"` or  
-    - `query = "few-shot multimodal representation learning"`  
-    with the same `year_low = 2020`.  
-  It then merges these results with the previous set and selects a diverse subset of 5 papers.
+**Step 4 – Printing Service Search (`google_maps_search`)**  
+The agent calls:
+- Function: `google_maps_search`
+- Arguments:
+  - `query = "printing shop thesis binding poster printing"`
+  - `location = "Clear Water Bay, Hong Kong"` (near HKUST)
+  - `num = 15`
 
-- **Step 6 – Final Selection, Summaries, and Reading Order (no further tools)**  
-  Finally, the agent:
-  - Picks **5 papers** that together cover:
-    - foundational ideas,
-    - representative methods, and
-    - recent improvements or extensions.
-  - For each paper, it writes a **2–3 sentence summary** in the final answer, based primarily on the abstract and introduction it read via `browse_website`, and optionally on blog summaries from `google_search`.
-  - It also proposes a **reading order**, e.g.:
-    1. A more general or survey-style paper for high-level context.
-    2. A foundational few-shot multimodal method.
-    3–5. More specialized or recent improvements building on that foundation.
+Returns print shops with `rating`, `reviews`, `address`, `phone`. The agent filters for:
+- Rating > 4.2
+- High review count (>30) indicating reliability
+- Services mentioned: thesis binding, large format poster printing, express service
+- Reasonable distance from HKUST (within 20 minutes travel)
+
+**Step 5 – Print Shop Details (`browse_website` + `google_search`)**  
+For 2-3 promising print shops:
+- Calls `browse_website` on their websites to check: *"thesis binding options (hardcover/softcover)", "poster printing sizes (A0, A1)", "turnaround time (express/standard)", "pricing"*
+- Issues `google_search` like: *"<shop name> thesis binding quality review HKUST"* to find student experiences and feedback about print quality and reliability.
+
+**Step 6 – Defense Essentials Shopping (`google_shopping`)**  
+The agent makes multiple shopping queries:
+- `query = "men formal suit Hong Kong"` → ~HK$800-1200 for business attire
+- `query = "presentation clicker laser pointer wireless"` → ~HK$150-300
+- `query = "leather document folder A4 professional"` → ~HK$100-200
+- `query = "USB flash drive 64GB metal"` → ~HK$80-150
+- `query = "portfolio presentation binder"` → ~HK$50-100
+
+The agent calculates total cost to stay within HK$2500 budget, prioritizing:
+- Formal attire (essential for professional appearance)
+- Presentation clicker (improves delivery confidence)
+- Document folders and backup drives (practical necessities)
+
+**Step 7 – Product Review Verification (`google_search`)**  
+For high-value items (formal suit, presentation clicker):
+- Searches: *"<product model> review Hong Kong quality durability"*
+- For suits: checks for *"fit", "fabric quality", "value for money"*
+- For clickers: verifies *"Bluetooth range", "battery life", "compatibility with Mac/Windows"*
+
+**Step 8 – Final Defense Preparation Plan (no further tools)**  
+The agent outputs:
+- **Literature Support**: 3-5 papers with titles, authors, key findings, and how they strengthen specific sections of the defense (e.g., "Paper A supports your methodology choice", "Paper B provides comparison benchmark").
+- **Printing Services**: 2-3 print shops with addresses, ratings, services offered (thesis binding options, poster sizes), estimated costs, turnaround time, and booking phone numbers.
+- **Defense Essentials**: Itemized shopping list with products, prices, purchase links, and total cost breakdown (~HK$2500).
+  - Formal attire: HK$1000
+  - Presentation clicker: HK$250
+  - Document folders & USB drives: HK$200
+  - Miscellaneous supplies: HK$100
+  - Printing budget reserve: HK$950
 
 ### 3.4 Correctness and Failure Analysis
 
-- **Overall outcome**  
-  - The agent is able to automatically produce a **reasonable initial reading list** and reading order:
-    - `google_scholar` ensures the papers are relevant and satisfy the year constraint.
-    - Citation counts and titles help it prioritize more impactful or central works.
-    - `browse_website` enables extraction of abstracts and introductions to form concise summaries.
+**Overall outcome:**  
+The agent provides a comprehensive thesis defense preparation plan:
+- `google_scholar` identifies relevant recent research to strengthen the literature review and provide talking points for potential committee questions.
+- `google_maps_search` locates reliable printing services with student reviews, crucial for professional thesis presentation.
+- `google_shopping` delivers practical recommendations for defense essentials within budget.
 
-- **Limitations and possible errors**  
-  - Some PDFs or HTML pages (especially publisher sites) have complex structures; `browse_website` might include navigation text or cut off parts of the abstract, which can slightly distort summaries.
-  - Citation counts are not a perfect indicator of importance, especially for very recent papers; a promising but new paper may be underweighted.
-  - The year filtering via Serper’s Scholar endpoint depends on how well `year_low` and `year_high` are enforced; in rare cases, papers just outside the desired range might appear.
+**Limitations and possible errors:**
+- Scholar results may include papers that are topically related but not directly applicable to the specific thesis approach; the agent relies on titles/abstracts which may not fully capture relevance. Human judgment is still needed to select the most pertinent papers.
+- Print shop pricing on Maps is often unavailable or outdated; actual thesis binding and poster printing costs require calling or visiting. The agent can identify candidates but cannot guarantee pricing accuracy.
+- Formal attire sizing is highly personal; the agent can recommend stores/products but the user must verify fit in person. Online sizing charts help but aren't foolproof.
+- Some print shops near universities offer student discounts not reflected in online listings; the agent may miss these cost-saving opportunities.
+- Paper availability: some Scholar results may link to paywalled papers; students need institutional access to read full texts, which the agent cannot verify.
 
-Nevertheless, the agent greatly speeds up the **literature screening** phase by automating search, filtering, and basic summarization, leaving only deeper critical reading to the human.
+**Key strength:**  
+Unlike Task 3's original fitness scenario, **preparing for thesis defense** is a realistic situation where students genuinely use Google Scholar (for last-minute literature checks), need local printing services (thesis copies and posters are mandatory for defense), and must purchase professional items. This workflow naturally combines all three tools in a coherent, time-sensitive task that students actually perform.
 
 ---
 
 ## Summary of the Three Tasks
 
-- **Task 1 (Café search)** primarily demonstrates **location-based decision making** using `google_maps_search`, `browse_website`, and `google_search`.
-- **Task 2 (Headphone purchase)** demonstrates **shopping and product comparison**, centered on `google_shopping`, with `google_search` and `browse_website` for context and validation.
-- **Task 3 (Literature screening)** demonstrates **academic search and reading order planning**, using `google_scholar`, `browse_website`, and `google_search`.  
+- **Task 1 (Conference Preparation)** demonstrates **academic research + location planning + shopping**, using `google_scholar`, `google_maps_search`, and `google_shopping` in a realistic workflow for attending a professional event.
 
-Each trajectory uses at least **three different tools** and consists of at least **five steps**, closely mirroring how I would perform these tasks manually while showing how the agent automates the process end-to-end.
+- **Task 2 (Course Project Preparation)** demonstrates **literature review + study location scouting + equipment procurement**, using the same three main tools for an academic project context.
 
+- **Task 3 (Thesis Defense Preparation)** demonstrates **academic literature support + printing logistics + professional attire procurement**, using `google_scholar`, `google_maps_search`, and `google_shopping` in a high-stakes academic milestone context.
 
+Each trajectory uses at least **three different main tools** (excluding search/browsing auxiliaries) and consists of at least **five steps**, closely mirroring realistic manual workflows while showing how the agent automates these processes end-to-end.
+
+**Key Insight:**  
+While `google_search` and `browse_website` are essential for gathering detailed information, the **core decision-making tools** (`google_scholar`, `google_maps_search`, `google_shopping`) drive the agent's ability to complete complex, multi-faceted real-world tasks that would otherwise require manually navigating multiple platforms and websites.
