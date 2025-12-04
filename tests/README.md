@@ -7,11 +7,6 @@ This directory contains test scripts for the project.
 ### `test_maps.py`
 Quick test script for Google Maps functionality.
 
-**Usage:**
-```bash
-python3 tests/test_maps.py
-```
-
 **What it does:**
 1. Searches for coffee shops in Central, Hong Kong
 2. Displays detailed information about the results
@@ -19,11 +14,6 @@ python3 tests/test_maps.py
 
 ### `test_scholar.py`
 Quick test script for Google Scholar functionality.
-
-**Usage:**
-```bash
-python3 tests/test_scholar.py
-```
 
 **What it does:**
 1. Searches for academic papers related to "transformer neural network"
@@ -33,22 +23,12 @@ python3 tests/test_scholar.py
 ### `test_shopping.py`
 Quick test script for Google Shopping functionality.
 
-**Usage:**
-```bash
-python3 tests/test_shopping.py
-```
-
 **What it does:**
 1. Searches for "Nike Air Max 97" in Hong Kong
 2. Displays product titles, prices, sources, and ratings
 
 ### `test_browsing.py`
 Quick test script for Website Browsing functionality.
-
-**Usage:**
-```bash
-python3 tests/test_browsing.py
-```
 
 **What it does:**
 1. Browses a Wikipedia page and extracts content
@@ -59,12 +39,17 @@ python3 tests/test_browsing.py
 - Console output with search results or extracted content
 - For maps, an HTML map file in the `tests/` directory
 
-## Running Tests
+### `task_conference_preparation.py`
+Runs Task 1: AI Conference Preparation.  
+**Goal:** Find papers, hotels, and shopping items for a conference in Kowloon.
 
-Make sure you have:
-1. API keys configured in `.env` file
-2. All dependencies installed: `pip install -r requirements.txt`
-3. Run from the project root directory
+### `task_course_project.py`
+Runs Task 2: Course Project Preparation.  
+**Goal:** Find literature, study locations, and equipment for a few-shot learning project.
+
+### `task_thesis_defense.py`
+Runs Task 3: Thesis Defense Preparation.  
+**Goal:** Find supporting papers, printing services, and formal supplies for a thesis defense.
 
 ## Adding New Tests
 

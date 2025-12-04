@@ -23,6 +23,7 @@ COMP4901B_Project/
 │   └── README.md ................... Documentation for the test and task scripts
 ├── shell/
 │   ├── run_tests.sh ................ ⚡ Script to run all unit tests
+│   ├── run_tasks.sh ................ 🤖 Script to run all realistic task demos
 │   ├── run_experiment.sh ........... 🧪 Script for full training/evaluation pipeline
 │   └── find_improvements.sh ........ 📈 Script to analyze performance gains
 ├── scripts/
@@ -72,7 +73,16 @@ Before running experiments, ensure all external tools (Maps, Scholar, Shopping, 
 *   **What it does**: Sequentially runs unit tests for all tools in `tests/`.
 *   **When to use**: After setting up the environment or modifying `src/tools.py`.
 
-### 2. Run Full Experiment Pipeline (`run_experiment.sh`)
+### 2. Run Realistic Task Demos (`run_tasks.sh`)
+Demonstrate the agent's ability to handle complex, multi-step real-world scenarios.
+
+```bash
+./shell/run_tasks.sh
+```
+*   **What it does**: Runs 3 complex tasks (Conference Prep, Course Project, Thesis Defense) and saves the detailed logs to `results/`.
+*   **When to use**: To verify the agent's reasoning and planning capabilities on open-ended tasks.
+
+### 3. Run Full Experiment Pipeline (`run_experiment.sh`)
 This script automates the generation and evaluation process for different agent configurations (e.g., No Search vs. Search vs. Browsing).
 
 ```bash
